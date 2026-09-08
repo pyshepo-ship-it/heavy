@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { getDatabase } from '../db/schema'
+import { nextDocNumber } from '../db/helpers'
 import type { PayrollRun, PayrollItem, Employee } from '@shared/types'
 
 export function registerPayrollHandlers(): void {
@@ -27,8 +28,7 @@ export function registerPayrollHandlers(): void {
     const existing = db.prepare('SELECT id FROM payroll_runs WHERE month = ?').get(month)
     if (existing) throw new Error('مسيرة رواتب لهذا الشهر موجودة بالفعل')
 
-    const count = (db.prepare('SELECT COUNT(*) as c FROM payroll_runs').get() as { c: number }).c
-    const runNumber = `PR-${String(count + 1).padStart(5, '0')}`
+    const runNumber = nextDocNumber(db, 'payroll_runs', 'PR')
 
     const runResult = db.prepare(`
       INSERT INTO payroll_runs (run_number, month, status, notes)
@@ -54,14 +54,15 @@ export function registerPayrollHandlers(): void {
       const deductionsTotal = deductions.total
       const netPay = baseSalary - advancesTotal - deductionsTotal
 
-      db.prepare(`
+      const itemResult = db.prepare(`
         INSERT INTO payroll_items (payroll_run_id, employee_id, base_salary, overtime_hours, overtime_amount, bonus, advances, deductions, net_pay, status, notes)
         VALUES (?, ?, ?, 0, 0, 0, ?, ?, ?, 'pending', '')
       `).run(runId, emp.id, baseSalary, advancesTotal, deductionsTotal, netPay)
+      const payrollItemId = Number(itemResult.lastInsertRowid)
 
-      db.prepare('UPDATE salary_advances SET is_deducted = 1, payroll_item_id = ? WHERE employee_id = ? AND is_deducted = 0').run(runId, emp.id)
+      db.prepare('UPDATE salary_advances SET is_deducted = 1, payroll_item_id = ? WHERE employee_id = ? AND is_deducted = 0').run(payrollItemId, emp.id)
 
-      db.prepare('UPDATE salary_deductions SET is_applied = 1, payroll_item_id = ? WHERE employee_id = ? AND is_applied = 0').run(runId, emp.id)
+      db.prepare('UPDATE salary_deductions SET is_applied = 1, payroll_item_id = ? WHERE employee_id = ? AND is_applied = 0').run(payrollItemId, emp.id)
 
       totalGross += baseSalary
       totalDeductions += advancesTotal + deductionsTotal
@@ -97,14 +98,40 @@ export function registerPayrollHandlers(): void {
   })
 
   ipcMain.handle('payrollRuns:markPaid', (_, runId: number): boolean => {
+    const run = db.prepare('SELECT * FROM payroll_runs WHERE id = ?').get(runId) as PayrollRun | undefined
+    if (!run) throw new Error('المسيرة غير موجودة')
+    if (run.status === 'paid') return true
+
     db.prepare("UPDATE payroll_runs SET status = 'paid', updated_at = datetime('now') WHERE id = ?").run(runId)
     db.prepare("UPDATE payroll_items SET status = 'paid', updated_at = datetime('now') WHERE payroll_run_id = ?").run(runId)
+
+    const items = db.prepare('SELECT * FROM payroll_items WHERE payroll_run_id = ?').all(runId) as PayrollItem[]
+    for (const item of items) {
+      const existing = db.prepare(
+        "SELECT id FROM salary_payments WHERE employee_id = ? AND month = ? AND status = 'paid' LIMIT 1"
+      ).get(item.employee_id, run.month) as { id: number } | undefined
+      if (existing) continue
+
+      const paymentNumber = nextDocNumber(db, 'salary_payments', 'SAL')
+      db.prepare(`
+        INSERT INTO salary_payments (payment_number, employee_id, month, base_salary, overtime_hours, overtime_rate, overtime_amount, bonus, advances_total, deductions_total, net_salary, status, payment_date, notes)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, 'paid', date('now'), 'صرف آلي من مسيرة رواتب')
+      `).run(paymentNumber, item.employee_id, run.month, item.base_salary, item.overtime_hours, item.overtime_amount, item.bonus, item.advances, item.deductions, item.net_pay)
+    }
+
     return true
   })
 
   ipcMain.handle('payrollRuns:delete', (_, runId: number): boolean => {
-    db.prepare('UPDATE salary_advances SET is_deducted = 0, payroll_item_id = NULL WHERE payroll_item_id = ?').run(runId)
-    db.prepare('UPDATE salary_deductions SET is_applied = 0, payroll_item_id = NULL WHERE payroll_item_id = ?').run(runId)
+    const run = db.prepare('SELECT status FROM payroll_runs WHERE id = ?').get(runId) as { status: string } | undefined
+    if (run && run.status !== 'draft') throw new Error('يمكن حذف المسيرات في حالة مسودة فقط')
+    const itemIds = db.prepare('SELECT id FROM payroll_items WHERE payroll_run_id = ?').all(runId) as Array<{ id: number }>
+    const ids = itemIds.map(i => i.id)
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(', ')
+      db.prepare(`UPDATE salary_advances SET is_deducted = 0, payroll_item_id = NULL WHERE payroll_item_id IN (${placeholders})`).run(...ids)
+      db.prepare(`UPDATE salary_deductions SET is_applied = 0, payroll_item_id = NULL WHERE payroll_item_id IN (${placeholders})`).run(...ids)
+    }
     db.prepare('DELETE FROM payroll_items WHERE payroll_run_id = ?').run(runId)
     db.prepare('DELETE FROM payroll_runs WHERE id = ?').run(runId)
     return true

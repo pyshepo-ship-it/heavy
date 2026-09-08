@@ -26,6 +26,8 @@ interface EquipmentReport {
   contracts_count: number
   total_contracts: number
   total_invoices: number
+  voucher_expenses: number
+  voucher_revenue: number
   total_expenses: number
   net_profit: number
 }
@@ -91,7 +93,7 @@ const [activeTab, setActiveTab] = useState('pnl')
         const data = await window.api.getReportsPnL(dateFrom, dateTo)
         setPnlData(data)
       } else if (activeTab === 'equipment') {
-        const data = await window.api.getReportsEquipment(equipmentFilter || undefined, dateFrom, dateTo)
+        const data = await window.api.getReportsEquipment(equipmentFilter || null, dateFrom, dateTo)
         setEquipmentData(data)
       } else if (activeTab === 'contracts') {
         const data = await window.api.getReportsContracts(dateFrom, dateTo)
@@ -109,6 +111,7 @@ const [activeTab, setActiveTab] = useState('pnl')
   }
 
   useEffect(() => {
+    window.api.getEquipment().then((list) => setEquipmentList(list)).catch(() => {})
     window.api.getSettings().then((s) => {
       if (s && s.currency) setFormatCurrency(s.currency)
     }).catch(() => {})
@@ -235,6 +238,8 @@ const [activeTab, setActiveTab] = useState('pnl')
               <th className="px-4 py-3 text-right">عدد العقود</th>
               <th className="px-4 py-3 text-right">إجمالي العقود</th>
               <th className="px-4 py-3 text-right">إجمالي الفواتير</th>
+              <th className="px-4 py-3 text-right">سندات قبض</th>
+              <th className="px-4 py-3 text-right">سندات صرف</th>
               <th className="px-4 py-3 text-right">إجمالي المصروفات</th>
               <th className="px-4 py-3 text-right">صافي الربح</th>
             </tr>
@@ -247,6 +252,8 @@ const [activeTab, setActiveTab] = useState('pnl')
                 <td className="px-4 py-3">{row.contracts_count}</td>
                 <td className="px-4 py-3">{formatMoney(row.total_contracts)}</td>
                 <td className="px-4 py-3 text-green-600 dark:text-green-400">{formatMoney(row.total_invoices)}</td>
+                <td className="px-4 py-3 text-green-600 dark:text-green-400">{formatMoney(row.voucher_revenue)}</td>
+                <td className="px-4 py-3 text-red-600 dark:text-red-400">{formatMoney(row.voucher_expenses)}</td>
                 <td className="px-4 py-3 text-red-600 dark:text-red-400">{formatMoney(row.total_expenses)}</td>
                 <td className={`px-4 py-3 font-bold ${row.net_profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {row.net_profit >= 0 ? '+' : ''}{formatMoney(row.net_profit)}
@@ -255,7 +262,7 @@ const [activeTab, setActiveTab] = useState('pnl')
             ))}
             {equipmentData.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center">
+                  <td colSpan={9} className="px-4 py-16 text-center">
                     <PackageOpen className="w-14 h-14 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
                     <p className="text-slate-400 font-medium">لا توجد بيانات للمعدات</p>
                     <p className="text-slate-300 text-sm mt-1">اختر فترة زمنية مختلفة أو معدة محددة</p>

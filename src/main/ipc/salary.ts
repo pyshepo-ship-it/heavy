@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { getDatabase } from '../db/schema'
+import { nextDocNumber } from '../db/helpers'
 import type { SalaryPayment, SalaryAdvance, SalaryDeduction } from '@shared/types'
 
 export function registerSalaryHandlers(): void {
@@ -65,8 +66,7 @@ export function registerSalaryHandlers(): void {
   })
 
   ipcMain.handle('salaryPayments:create', (_, payment: any): number => {
-    const count = (db.prepare('SELECT COUNT(*) as c FROM salary_payments').get() as { c: number }).c
-    const paymentNumber = `SAL-${String(count + 1).padStart(5, '0')}`
+    const paymentNumber = nextDocNumber(db, 'salary_payments', 'SAL')
 
     const result = db.prepare(`
       INSERT INTO salary_payments (payment_number, employee_id, month, base_salary, overtime_hours, overtime_rate, overtime_amount, bonus, advances_total, deductions_total, net_salary, status, payment_date, notes)

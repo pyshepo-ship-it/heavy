@@ -1,10 +1,19 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useLicenseStore } from '../store/useLicenseStore'
 import { Info, Shield, Key, Copy, Check, ExternalLink, Truck, RefreshCw } from 'lucide-react'
 import type { AboutData } from '@shared/types'
 
-const API_BASE = 'https://your-worker.your-subdomain.workers.dev'
+const API_BASE = (import.meta.env.VITE_API_BASE as string) || 'https://your-worker.your-subdomain.workers.dev'
+
+function defaultAboutData(): AboutData {
+  return {
+    announcement: 'مرحباً بكم في نظام إدارة تأجير المعدات الثقيلة',
+    version: '1.0.0',
+    support_link: 'https://t.me/your_support_bot',
+    status_message: 'النظام يعمل بكفاءة عالية'
+  }
+}
 
 export default function About() {
   const { license, activateLicense, getDeviceId } = useLicenseStore()
@@ -26,15 +35,16 @@ export default function About() {
       if (res.ok) {
         const data = await res.json()
         setAboutData(data)
+      } else {
+        setAboutData(defaultAboutData())
       }
     } catch {
-      setAboutData({
-        announcement: 'مرحباً بكم في نظام إدارة تأجير المعدات الثقيلة',
-        version: '1.0.0',
-        support_link: 'https://t.me/your_support_bot',
-        status_message: 'النظام يعمل بكفاءة عالية'
-      })
+      setAboutData(defaultAboutData())
     }
+  }
+
+  const fetchActivationSupportLink = () => {
+    // Keep local; support_link comes from the main fetchAboutData too.
   }
 
   const handleActivate = async () => {

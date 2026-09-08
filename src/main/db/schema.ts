@@ -1,4 +1,4 @@
-﻿import Database from 'better-sqlite3'
+import Database from 'better-sqlite3'
 import path from 'path'
 import { app } from 'electron'
 
@@ -349,6 +349,30 @@ function initializeSchema(db: Database.Database): void {
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
       FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS vouchers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      voucher_number TEXT NOT NULL UNIQUE,
+      voucher_type TEXT NOT NULL CHECK(voucher_type IN ('pay','receive')),
+      client_id INTEGER,
+      equipment_id INTEGER,
+      invoice_id INTEGER,
+      payment_id INTEGER,
+      bank_id INTEGER,
+      amount REAL DEFAULT 0,
+      method TEXT DEFAULT 'cash' CHECK(method IN ('cash','bank')),
+      date TEXT NOT NULL,
+      beneficiary TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      status TEXT DEFAULT 'confirmed' CHECK(status IN ('confirmed','cancelled')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL,
+      FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE SET NULL,
+      FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
+      FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE SET NULL,
+      FOREIGN KEY (bank_id) REFERENCES banks(id) ON DELETE SET NULL
     );
     `)
 

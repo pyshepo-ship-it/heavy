@@ -20,7 +20,8 @@ interface StatementData {
 }
 
 export default function CustomerStatement() {
-  const params = new URLSearchParams(window.location.search)
+  const hash = window.location.hash.split('?')[1] || ''
+  const params = new URLSearchParams(hash || window.location.search)
   const urlClientId = params.get('client')
   const [selectedClient, setSelectedClient] = useState<number>(urlClientId ? Number(urlClientId) : 0)
   const [clients, setClients] = useState<Client[]>([])
@@ -45,9 +46,11 @@ export default function CustomerStatement() {
     if (!selectedClient) return
     setLoading(true)
     try {
+      const list = clients.length > 0 ? clients : await window.api.getClients()
+      if (clients.length === 0) setClients(list)
       const data = await window.api.getCustomerStatement(selectedClient, dateFrom, dateTo)
       setStatement(data)
-      const client = clients.find(c => c.id === selectedClient) || null
+      const client = list.find((c: Client) => c.id === selectedClient) || null
       setSelectedClientInfo(client)
     } catch (err) {
       console.error(err)
@@ -157,7 +160,7 @@ export default function CustomerStatement() {
     if (printWindow) {
       printWindow.document.write('<html><head><meta charset="UTF-8"><title>كشف حساب عميل</title></head><body></body></html>')
       printWindow.document.close()
-      printWindow.document.write(html.join('\n'))
+      printWindow.document.write(html)
       printWindow.document.close()
       printWindow.focus()
       setTimeout(() => printWindow.print(), 500)

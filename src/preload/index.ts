@@ -1,4 +1,4 @@
-﻿import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 const api = {
@@ -145,6 +145,15 @@ const api = {
   // Statement
   getCustomerStatement: (clientId: number, dateFrom: string, dateTo: string) => ipcRenderer.invoke('statement:customer', clientId, dateFrom, dateTo),
   getEquipmentSummary: () => ipcRenderer.invoke('statement:equipmentSummary'),
+
+  // Vouchers
+  getVouchers: () => ipcRenderer.invoke('vouchers:getAll'),
+  getVouchersByType: (type: 'pay' | 'receive') => ipcRenderer.invoke('vouchers:getByType', type),
+  createVoucher: (data: any) => ipcRenderer.invoke('vouchers:create', data),
+  updateVoucher: (id: number, data: any) => ipcRenderer.invoke('vouchers:update', id, data),
+  deleteVoucher: (id: number) => ipcRenderer.invoke('vouchers:delete', id),
+  getVoucherReport: (type: 'pay' | 'receive', dateFrom: string, dateTo: string) => ipcRenderer.invoke('vouchers:report', type, dateFrom, dateTo),
+  getVoucherEquipmentSummary: (equipmentId: number, dateFrom: string, dateTo: string) => ipcRenderer.invoke('vouchers:equipmentSummary', equipmentId, dateFrom, dateTo),
 }
 
 if (process.contextIsolated) {

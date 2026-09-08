@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Search, X, Wallet, ArrowDownCircle, ShoppingCart, Lock, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Custody, CustodyTransaction, Employee, Driver, Bank } from '@shared/types'
@@ -401,7 +401,7 @@ export default function Custody() {
               </div>
               <div className="flex justify-end gap-3 mt-6">
                 <button onClick={() => setShowPurchaseModal(false)} className="btn-secondary">إلغاء</button>
-                <button onClick={handlePurchase} className="btn-primary" disabled={!purchaseForm.vendor_name || !purchaseForm.amount || (selectedCustody && purchaseForm.amount > selectedCustody.remaining)}>تسجيل المشتريات</button>
+                <button onClick={handlePurchase} className="btn-primary" disabled={!purchaseForm.vendor_name || !purchaseForm.amount || Boolean(selectedCustody && purchaseForm.amount > selectedCustody.remaining)}>تسجيل المشتريات</button>
               </div>
             </motion.div>
           </motion.div>

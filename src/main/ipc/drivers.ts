@@ -1,4 +1,4 @@
-﻿import { ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { getDatabase } from '../db/schema'
 import type { Driver } from '@shared/types'
 
@@ -21,17 +21,20 @@ export function registerDriverHandlers(): void {
     return Number(result.lastInsertRowid)
   })
 
+  const allowedColumns = new Set(['name', 'phone', 'employee_id', 'daily_wage', 'overtime_rate', 'equipment_id', 'notes'])
+
   ipcMain.handle('drivers:update', (_, id: number, driver: Partial<Driver>): boolean => {
     const fields: string[] = []
     const values: unknown[] = []
 
     Object.entries(driver).forEach(([key, value]) => {
-      if (key !== 'id' && key !== 'created_at') {
+      if (allowedColumns.has(key)) {
         fields.push(`${key} = ?`)
         values.push(value)
       }
     })
 
+    if (fields.length === 0) return true
     fields.push("updated_at = datetime('now')")
     values.push(id)
 
@@ -40,6 +43,8 @@ export function registerDriverHandlers(): void {
   })
 
   ipcMain.handle('drivers:delete', (_, id: number): boolean => {
+    const refs = db.prepare('SELECT COUNT(*) as c FROM rental_contracts WHERE driver_id = ?').get(id) as { c: number }
+    if (refs.c > 0) throw new Error('لا يمكن حذف السائق لوجود عقود مرتبطة به')
     db.prepare('DELETE FROM drivers WHERE id = ?').run(id)
     return true
   })

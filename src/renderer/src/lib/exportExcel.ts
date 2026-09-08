@@ -41,8 +41,8 @@ export function exportToExcelXLSX(data: Array<Record<string, any>>, filename: st
       // Style header
       const headerRow = sheet.getRow(1)
       headerRow.eachCell((cell) => {
-        cell.font = { bold: true, color: { arg: 'FFFFFF' } }
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { arg: '2563eb' } }
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } }
       })
       
       workbook.xlsx.writeBuffer().then((buffer) => {

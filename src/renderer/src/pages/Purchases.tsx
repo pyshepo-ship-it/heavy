@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Trash2, Search, X, Edit3 } from 'lucide-react'
 import type { PurchaseInvoice, Custody } from '@shared/types'
@@ -22,7 +22,7 @@ export default function Purchases() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
   const [form, setForm] = useState({
-    vendor_name: '', description: '', amount: 0, custody_id: null as number | null, status: 'pending' as 'pending' | 'paid' | 'cancelled', notes: ''
+    vendor_name: '', description: '', amount: 0, custody_id: null as number | null, status: 'pending' as 'pending' | 'paid' | 'cancelled', date: new Date().toISOString().slice(0, 10), notes: ''
   })
 
   useEffect(() => {
@@ -53,7 +53,7 @@ export default function Purchases() {
     setEditing(inv.id)
     setForm({
       vendor_name: inv.vendor_name, description: inv.description, amount: inv.amount,
-      custody_id: inv.custody_id, status: inv.status, notes: inv.notes
+      custody_id: inv.custody_id, status: inv.status, date: inv.date, notes: inv.notes
     })
     setShowModal(true)
   }
@@ -90,7 +90,7 @@ export default function Purchases() {
           <p className="text-slate-500 dark:text-slate-400">عرض وإدارة فواتير المشتريات</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => { setEditing(null); setForm({ vendor_name: '', description: '', amount: 0, custody_id: null, status: 'pending', notes: '' }); setShowModal(true) }} className="btn-primary flex items-center gap-2">
+          <button onClick={() => { setEditing(null); setForm({ vendor_name: '', description: '', amount: 0, custody_id: null, status: 'pending', date: new Date().toISOString().slice(0, 10), notes: '' }); setShowModal(true) }} className="btn-primary flex items-center gap-2">
             <Plus className="w-4 h-4" /> إضافة فاتورة
           </button>
           <div className="card px-4 py-2">
@@ -200,7 +200,7 @@ export default function Purchases() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">التاريخ</label>
-                    <input type="date" value={new Date().toISOString().split('T')[0]} className="input-field" />
+                    <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="input-field" />
                   </div>
                 </div>
                 <div>

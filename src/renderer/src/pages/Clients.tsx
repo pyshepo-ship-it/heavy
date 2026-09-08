@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Edit, Trash2, Search, X, FileText, AlertTriangle, Users } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -155,7 +155,7 @@ export default function Clients() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
-                        <button onClick={() => window.open("/customer-statement?client=" + client.id, "_self")} title="كشف الحساب" className="p-1.5 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20">
+                        <button onClick={() => navigate('/customer-statement?client=' + client.id)} title="كشف الحساب" className="p-1.5 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20">
                           <FileText className="w-4 h-4 text-green-600" />
                         </button>
                         <button onClick={() => openEdit(client)} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">

@@ -1,4 +1,4 @@
-﻿import { ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { getDatabase } from '../db/schema'
 import type { Equipment } from '@shared/types'
 
@@ -25,10 +25,12 @@ export function registerEquipmentHandlers(): void {
     return db.prepare('SELECT * FROM equipment WHERE id = ?').get(id) as Equipment | undefined
   })
 
+  const allowedColumns = new Set(['code', 'name', 'type', 'current_meter', 'hourly_rate', 'daily_rate', 'monthly_rate', 'status', 'notes'])
+
   ipcMain.handle('equipment:create', (_, equipment: Omit<Equipment, 'id' | 'created_at' | 'updated_at'>): number => {
     const prefix = TYPE_PREFIXES[equipment.type] || 'OTH'
-    const count = (db.prepare('SELECT COUNT(*) as c FROM equipment WHERE type = ?').get(equipment.type) as { c: number }).c
-    const code = `${prefix}-${String(count + 1).padStart(3, '0')}`
+    const maxRow = db.prepare('SELECT MAX(id) as maxId FROM equipment WHERE type = ?').get(equipment.type) as { maxId: number | null }
+    const code = `${prefix}-${String(Number(maxRow?.maxId ?? 0) + 1).padStart(3, '0')}`
 
     const result = db.prepare(`
       INSERT INTO equipment (code, name, type, current_meter, hourly_rate, daily_rate, monthly_rate, status, notes)
@@ -42,12 +44,13 @@ export function registerEquipmentHandlers(): void {
     const values: unknown[] = []
 
     Object.entries(equipment).forEach(([key, value]) => {
-      if (key !== 'id' && key !== 'created_at') {
+      if (allowedColumns.has(key)) {
         fields.push(`${key} = ?`)
         values.push(value)
       }
     })
 
+    if (fields.length === 0) return true
     fields.push("updated_at = datetime('now')")
     values.push(id)
 
@@ -56,6 +59,17 @@ export function registerEquipmentHandlers(): void {
   })
 
   ipcMain.handle('equipment:delete', (_, id: number): boolean => {
+    const activeContract = db.prepare("SELECT id FROM rental_contracts WHERE equipment_id = ? AND status = 'active'").get(id)
+    if (activeContract) throw new Error('لا يمكن حذف المعدة لوجود عقد نشط')
+
+    const refs = db.prepare(
+      `SELECT (SELECT COUNT(*) FROM rental_contracts WHERE equipment_id = ?) +
+              (SELECT COUNT(*) FROM invoices WHERE equipment_id = ?) +
+              (SELECT COUNT(*) FROM expenses WHERE equipment_id = ?) +
+              (SELECT COUNT(*) FROM drivers WHERE equipment_id = ?) as c`
+    ).get(id, id, id, id) as { c: number }
+    if (refs.c > 0) throw new Error('لا يمكن حذف المعدة لوجود عقود أو فواتير أو مصروفات أو سائقين مرتبطين بها')
+
     db.prepare('DELETE FROM equipment WHERE id = ?').run(id)
     return true
   })

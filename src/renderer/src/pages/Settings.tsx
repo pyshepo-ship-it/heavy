@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Settings as SettingsIcon, Save, Building2, Receipt, Globe } from 'lucide-react'
+import { Settings as SettingsIcon, Save, Building2, Receipt, Globe, Printer } from 'lucide-react'
 
 const COUNTRY_OPTIONS = [
   { value: 'SA', label: 'المملكة العربية السعودية', currency: 'ر.س', vatRate: 15 },
@@ -9,6 +9,22 @@ const COUNTRY_OPTIONS = [
   { value: 'EG', label: 'مصر', currency: 'ج.م', vatRate: 14 },
   { value: 'OTHER', label: 'أخرى', currency: 'عملة محلية', vatRate: 0 },
 ]
+
+const defaultPrintSettings = {
+  template: 'modern' as 'modern' | 'classic' | 'compact' | 'elegant' | 'thermal',
+  paper: 'A4' as 'A4' | 'A5' | 'Letter',
+  orientation: 'portrait' as 'portrait' | 'landscape',
+  accent_color: '#2563eb',
+  show_logo: true,
+  show_company_name: true,
+  show_tax_number: true,
+  show_commercial_reg: true,
+  show_address: true,
+  show_phone: true,
+  show_footer: true,
+  footer_text: '',
+  font_size: 12
+}
 
 export default function Settings() {
   const [loading, setLoading] = useState(true)
@@ -29,6 +45,7 @@ export default function Settings() {
     vat_note: '',
     footer_text: '',
     font_size: 12,
+    print_settings: JSON.stringify(defaultPrintSettings),
   })
 
   useEffect(() => {
@@ -48,7 +65,23 @@ export default function Settings() {
     }
   }
 
-  const handleCountryChange = (countryCode) => {
+  const getPrintSettings = () => {
+    try {
+      return { ...defaultPrintSettings, ...JSON.parse(form.print_settings || '{}') }
+    } catch {
+      return defaultPrintSettings
+    }
+  }
+  const printSettings = getPrintSettings()
+
+  const updatePrintSettings = (patch: Partial<typeof defaultPrintSettings>) => {
+    setForm(prev => ({
+      ...prev,
+      print_settings: JSON.stringify({ ...getPrintSettings(), ...patch })
+    }))
+  }
+
+  const handleCountryChange = (countryCode: string) => {
     const country = COUNTRY_OPTIONS.find(c => c.value === countryCode)
     if (country) {
       setForm(prev => ({
@@ -266,32 +299,121 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Section 4: إعدادات الطبعة (اختياري) */}
+      {/* Section 4: إعدادات الطباعة */}
       <div className="card p-6">
         <div className="flex items-center gap-2 mb-4">
-          <SettingsIcon className="w-5 h-5 text-orange-600" />
-          <h2 className="text-lg font-bold">إعدادات الطبعة</h2>
+          <Printer className="w-5 h-5 text-orange-600" />
+          <h2 className="text-lg font-bold">إعدادات الطباعة</h2>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">قالب الفاتورة</label>
+            <select
+              value={printSettings.template}
+              onChange={(e) => updatePrintSettings({ template: e.target.value as typeof defaultPrintSettings.template })}
+              className="select-field"
+            >
+              <option value="modern">مودرن</option>
+              <option value="classic">كلاسيك</option>
+              <option value="compact">مدمج</option>
+              <option value="elegant">أنيق</option>
+              <option value="thermal">حراري 80mm</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">حجم الورق</label>
+            <select
+              value={printSettings.paper}
+              onChange={(e) => updatePrintSettings({ paper: e.target.value as typeof defaultPrintSettings.paper })}
+              className="select-field"
+            >
+              <option value="A4">A4</option>
+              <option value="A5">A5</option>
+              <option value="Letter">Letter</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">الاتجاه</label>
+            <select
+              value={printSettings.orientation}
+              onChange={(e) => updatePrintSettings({ orientation: e.target.value as typeof defaultPrintSettings.orientation })}
+              className="select-field"
+            >
+              <option value="portrait">طولى</option>
+              <option value="landscape">عرضى</option>
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className="block text-sm font-medium mb-1">اللون الرئيسي</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={printSettings.accent_color}
+                onChange={(e) => updatePrintSettings({ accent_color: e.target.value })}
+                className="h-10 w-14 rounded border border-slate-200 dark:border-slate-700 cursor-pointer"
+              />
+              <input
+                type="text"
+                value={printSettings.accent_color}
+                onChange={(e) => updatePrintSettings({ accent_color: e.target.value })}
+                className="input-field w-32"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">حجم خط الطباعة</label>
+            <input
+              type="number"
+              value={printSettings.font_size}
+              onChange={(e) => updatePrintSettings({ font_size: Number(e.target.value) })}
+              className="input-field"
+              min={8}
+              max={24}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+          {([
+            ['show_logo', 'عرض الشعار'],
+            ['show_company_name', 'عرض اسم الشركة'],
+            ['show_tax_number', 'عرض الرقم الضريبي'],
+            ['show_commercial_reg', 'عرض السجل التجاري'],
+            ['show_address', 'عرض العنوان'],
+            ['show_phone', 'عرض الهاتف'],
+            ['show_footer', 'عرض التذييل'],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={Boolean(printSettings[key])}
+                onChange={(e) => updatePrintSettings({ [key]: e.target.checked } as any)}
+                className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mt-4">
           <div className="col-span-2">
             <label className="block text-sm font-medium mb-1">نص التذييل</label>
             <input
               type="text"
-              value={form.footer_text}
-              onChange={(e) => setForm({ ...form, footer_text: e.target.value })}
+              value={printSettings.footer_text}
+              onChange={(e) => updatePrintSettings({ footer_text: e.target.value })}
               className="input-field"
               placeholder="نص يظهر في أسفل الفاتورة"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">حجم الخط</label>
+          <div className="col-span-2">
+            <label className="block text-sm font-medium mb-1">ملاحظة الضريبة/Slogan (تُظهر في الفاتورة)</label>
             <input
-              type="number"
-              value={form.font_size}
-              onChange={(e) => setForm({ ...form, font_size: Number(e.target.value) })}
+              type="text"
+              value={form.vat_note}
+              onChange={(e) => setForm({ ...form, vat_note: e.target.value })}
               className="input-field"
-              min={8}
-              max={24}
+              placeholder="مثال: شامل ضريبة القيمة المضافة 15%"
             />
           </div>
         </div>

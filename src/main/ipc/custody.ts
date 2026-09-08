@@ -1,5 +1,6 @@
-﻿import { ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { getDatabase } from '../db/schema'
+import { nextDocNumber } from '../db/helpers'
 import type { Custody, CustodyTransaction } from '@shared/types'
 
 export function registerCustodyHandlers(): void {
@@ -24,8 +25,10 @@ export function registerCustodyHandlers(): void {
     amount: number
     notes: string
   }): number => {
-    const count = (db.prepare('SELECT COUNT(*) as c FROM custody').get() as { c: number }).c
-    const custodyNumber = `CUST-${String(count + 1).padStart(5, '0')}`
+    const custodyNumber = nextDocNumber(db, 'custody', 'CUST')
+    if (data.amount <= 0) throw new Error('مبلغ العهدة يجب أن يكون أكبر من صفر')
+    const bank = db.prepare('SELECT id FROM banks WHERE id = ?').get(data.bank_id)
+    if (!bank) throw new Error('البنك/الخزينة غير موجود')
 
     const result = db.prepare(`
       INSERT INTO custody (custody_number, person_id, person_type, bank_id, amount, spent, remaining, status, notes)
@@ -47,6 +50,9 @@ export function registerCustodyHandlers(): void {
   ipcMain.handle('custody:deposit', (_, custodyId: number, bankId: number, amount: number, description: string): boolean => {
     const custody = db.prepare('SELECT * FROM custody WHERE id = ?').get(custodyId) as Custody
     if (!custody || custody.status !== 'open') throw new Error('العهدة غير موجودة أو مغلقة')
+    if (amount <= 0) throw new Error('مبلغ الإيداع يجب أن يكون أكبر من صفر')
+    const bank = db.prepare('SELECT id FROM banks WHERE id = ?').get(bankId)
+    if (!bank) throw new Error('البنك/الخزينة غير موجود')
 
     db.prepare(`
       INSERT INTO custody_transactions (custody_id, type, amount, description, date)
@@ -64,9 +70,10 @@ export function registerCustodyHandlers(): void {
   ipcMain.handle('custody:purchase', (_, custodyId: number, vendorName: string, description: string, amount: number, notes: string = ''): { invoice_id: number; custody_id: number } => {
     const custody = db.prepare('SELECT * FROM custody WHERE id = ?').get(custodyId) as Custody
     if (!custody || custody.status !== 'open') throw new Error('العهدة غير موجودة أو مغلقة')
+    if (amount <= 0) throw new Error('قيمة الشراء يجب أن تكون أكبر من صفر')
+    if (amount > custody.remaining) throw new Error('المبلغ المطلوب يتجاوز المتبقي في العهدة')
 
-    const invCount = (db.prepare('SELECT COUNT(*) as c FROM purchase_invoices').get() as { c: number }).c
-    const invoiceNumber = `PUR-${String(invCount + 1).padStart(5, '0')}`
+    const invoiceNumber = nextDocNumber(db, 'purchase_invoices', 'PUR')
 
 const invResult = db.prepare(`
       INSERT INTO purchase_invoices (invoice_number, custody_id, vendor_name, description, amount, status, date, notes)
@@ -97,15 +104,20 @@ const invResult = db.prepare(`
       type = 'surplus'
       db.prepare(`
         INSERT INTO custody_transactions (custody_id, type, amount, description, date)
-        VALUES (?, 'closing', ?, 'عهدة - مبلغ زائد يتم خصمه من الراتب', date('now'))
+        VALUES (?, 'closing', ?, 'عهدة - مبلغ زائد تمت إعادته للخزينة', date('now'))
       `).run(custodyId, difference)
+      db.prepare("UPDATE banks SET balance = balance + ?, updated_at = datetime('now') WHERE id = ?").run(difference, custody.bank_id)
     } else if (difference < 0) {
       type = 'deficit'
       db.prepare(`
         INSERT INTO custody_transactions (custody_id, type, amount, description, date)
-        VALUES (?, 'closing', ?, 'عهدة - مبلغ ناقص يتم صرفه مع الراتب', date('now'))
+        VALUES (?, 'closing', ?, 'عهدة - مبلغ ناقص تم تسويته من الخزينة', date('now'))
       `).run(custodyId, Math.abs(difference))
+      db.prepare("UPDATE banks SET balance = balance - ?, updated_at = datetime('now') WHERE id = ?").run(Math.abs(difference), custody.bank_id)
     }
+
+    // مشتريات العهدة تعتبر مسددة عند إغلاقها
+    db.prepare("UPDATE purchase_invoices SET status = 'paid', updated_at = datetime('now') WHERE custody_id = ? AND status = 'pending'").run(custodyId)
 
     db.prepare(`
       UPDATE custody SET status = 'closed', closed_at = datetime('now'), remaining = 0, closing_notes = ?, updated_at = datetime('now')

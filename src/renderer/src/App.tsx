@@ -1,5 +1,5 @@
-﻿import React from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import React from 'react'
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { useLicenseStore } from './store/useLicenseStore'
 import Layout from './components/Layout'
 import LicenseModal from './components/LicenseModal'
@@ -20,6 +20,7 @@ import Payroll from './pages/Payroll'
 import Settings from './pages/Settings'
 import Reports from './pages/Reports'
 import CustomerStatement from './pages/CustomerStatement'
+import Vouchers from './pages/Vouchers'
 
 function App() {
   const { license, isLoading, checkLicense } = useLicenseStore()
@@ -62,6 +63,7 @@ function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/customer-statement" element={<CustomerStatement />} />
+          <Route path="/vouchers" element={<Vouchers />} />
           <Route path="/about" element={<About />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

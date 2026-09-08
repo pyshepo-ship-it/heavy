@@ -1,19 +1,19 @@
-import { ipcMain } from 'electron'
-import { getDatabase } from '../db/schema'
+import { ipcMain, app } from 'electron'
+import { getDatabase, closeDatabase } from '../db/schema'
 import { join } from 'path'
-import { app } from 'electron'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, rmSync } from 'fs'
 
 export function registerBackupHandlers(): void {
   const dbPath = join(app.getPath('userData'), 'erp.db')
   const backupDir = join(app.getPath('appData'), 'HeavyEquipmentERP', 'backups')
 
-  ipcMain.handle('backup:create', (): { success: boolean; path: string } => {
+  ipcMain.handle('backup:create', async (): Promise<{ success: boolean; path: string }> => {
     try {
       if (!existsSync(backupDir)) mkdirSync(backupDir, { recursive: true })
       const dateStr = new Date().toISOString().split('T')[0]
       const backupPath = join(backupDir, `backup_${dateStr}.db`)
-      copyFileSync(dbPath, backupPath)
+      const db = getDatabase()
+      await db.backup(backupPath)
       return { success: true, path: backupPath }
     } catch {
       return { success: false, path: '' }
@@ -36,11 +36,21 @@ export function registerBackupHandlers(): void {
 
   ipcMain.handle('backup:restore', (_, backupPath: string): boolean => {
     try {
-      if (existsSync(backupPath)) {
-        copyFileSync(backupPath, dbPath)
-        return true
-      }
-      return false
+      if (!existsSync(backupPath)) return false
+
+      // Close the current database, replace it, then relaunch the app so
+      // every IPC handler gets the freshly opened database.
+      closeDatabase()
+      rmSync(dbPath + '-wal', { force: true })
+      rmSync(dbPath + '-shm', { force: true })
+      copyFileSync(backupPath, dbPath)
+      getDatabase()
+      // Reload the application so all handlers use the restored database.
+      setTimeout(() => {
+        app.relaunch()
+        app.quit()
+      }, 300)
+      return true
     } catch {
       return false
     }

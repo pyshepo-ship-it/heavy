@@ -1,36 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Eye, Trash2, X, CheckCircle, CreditCard, ArrowRight } from 'lucide-react'
+import type { PayrollRun as SharedPayrollRun, PayrollItem as SharedPayrollItem } from '@shared/types'
 
-interface PayrollRun {
-  id: number
-  month: string
-  notes: string
-  status: 'draft' | 'processed' | 'paid'
-  employee_count: number
-  total_base: number
-  total_advances: number
-  total_deductions: number
-  total_overtime_pay: number
-  total_bonuses: number
-  total_net: number
-  processed_at: string | null
-  paid_at: string | null
-}
-
-interface PayrollItem {
-  id: number
-  employee_id: number
-  employee_name: string
-  base_salary: number
-  overtime_hours: number
-  overtime_pay: number
-  bonus: number
-  advances: number
-  deductions: number
-  net_pay: number
-  status: string
-}
+type PayrollRun = SharedPayrollRun & { run_number: string }
+type PayrollItem = SharedPayrollItem & { employee_name: string }
 
 const statusMap: Record<string, { label: string; color: string }> = {
   draft: { label: 'مسودة', color: 'badge-yellow' },
@@ -110,9 +84,9 @@ export default function Payroll() {
     setLoading(true)
     try {
       const runDetails = await window.api.getPayrollRunById(run.id)
-      setSelectedRun(runDetails)
+      setSelectedRun(runDetails || null)
       const runItems = await window.api.getPayrollRunItems(run.id)
-      setItems(runItems)
+      setItems(runItems as PayrollItem[])
       setShowDetailsModal(true)
     } finally {
       setLoading(false)
@@ -156,9 +130,9 @@ export default function Payroll() {
                   <tr key={run.id} className="table-row">
                     <td className="px-4 py-3 font-medium">#{run.id}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{run.month}</td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{run.employee_count}</td>
-                    <td className="px-4 py-3 font-medium">{currency} {fmt(run.total_base)}</td>
-                    <td className="px-4 py-3 text-red-500">{currency} {fmt(run.total_advances + run.total_deductions)}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{run.total_employees}</td>
+                    <td className="px-4 py-3 font-medium">{currency} {fmt(run.total_gross)}</td>
+                    <td className="px-4 py-3 text-red-500">{currency} {fmt(run.total_deductions)}</td>
                     <td className="px-4 py-3 font-medium text-green-600">{currency} {fmt(run.total_net)}</td>
                     <td className="px-4 py-3">
                       <span className={`badge ${st.color}`}>{st.label}</span>
@@ -250,15 +224,15 @@ export default function Payroll() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
                   <p className="text-xs text-slate-500">عدد الموظفين</p>
-                  <p className="text-lg font-bold">{selectedRun.employee_count}</p>
+                  <p className="text-lg font-bold">{selectedRun.total_employees}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
                   <p className="text-xs text-slate-500">إجمالي الرواتب</p>
-                  <p className="text-lg font-bold">{currency} {fmt(selectedRun.total_base)}</p>
+                  <p className="text-lg font-bold">{currency} {fmt(selectedRun.total_gross)}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
                   <p className="text-xs text-slate-500">إجمالي الخصومات والسلفيات</p>
-                  <p className="text-lg font-bold text-red-500">{currency} {fmt(selectedRun.total_advances + selectedRun.total_deductions)}</p>
+                  <p className="text-lg font-bold text-red-500">{currency} {fmt(selectedRun.total_deductions)}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
                   <p className="text-xs text-slate-500">صافي الدفع</p>
@@ -295,7 +269,7 @@ export default function Payroll() {
                         <td className="px-4 py-3 font-medium">{item.employee_name}</td>
                         <td className="px-4 py-3">{currency} {fmt(item.base_salary)}</td>
                         <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{item.overtime_hours}h</td>
-                        <td className="px-4 py-3">{currency} {fmt(item.overtime_pay)}</td>
+                        <td className="px-4 py-3">{currency} {fmt(item.overtime_amount)}</td>
                         <td className="px-4 py-3 text-green-600">{currency} {fmt(item.bonus)}</td>
                         <td className="px-4 py-3 text-red-500">{currency} {fmt(item.advances)}</td>
                         <td className="px-4 py-3 text-red-500">{currency} {fmt(item.deductions)}</td>

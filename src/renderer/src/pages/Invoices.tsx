@@ -1,9 +1,10 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Search, X, Pencil, Printer, Copy, FileText } from 'lucide-react'
+import { Plus, Trash2, Search, X, Pencil, Printer, Copy, FileText, Banknote, Download } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import type { Invoice, Client, Equipment, RentalContract, AppSettings } from '@shared/types'
+import type { Invoice, Client, Equipment, RentalContract, AppSettings, PrintSettings } from '@shared/types'
 import { renderInvoiceTemplate, type TemplateName } from '../lib/invoiceTemplates'
+import { exportToExcelXLSX } from '../lib/exportExcel'
 
 const statusColors: Record<string, string> = {
   pending: 'badge-yellow',
@@ -50,6 +51,13 @@ export default function Invoices() {
   const [equipment, setEquipment] = useState<Equipment[]>([])
   const [contracts, setContracts] = useState<RentalContract[]>([])
   const [settings, setSettings] = useState<AppSettings | null>(null)
+  const printSettings = (() => {
+    try {
+      return { ...({} as PrintSettings), ...JSON.parse(settings?.print_settings || '{}') }
+    } catch {
+      return { template: 'modern', accent_color: '#2563eb', font_size: 12 } as PrintSettings
+    }
+  })()
   const [search, setSearch] = useState('')
   const [recentInvoices, setRecentInvoices] = useState<Invoice[]>([])
 
@@ -57,6 +65,9 @@ export default function Invoices() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [lineItems, setLineItems] = useState<LineItem[]>([])
   const [form, setForm] = useState(emptyForm)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null)
+  const [paymentForm, setPaymentForm] = useState({ amount: 0, method: 'cash', date: new Date().toISOString().slice(0, 10), notes: '' })
 
   const navigate = useNavigate()
 
@@ -223,18 +234,53 @@ export default function Invoices() {
     }
   }
 
+  const openPayment = (inv: Invoice) => {
+    setPaymentInvoice(inv)
+    setPaymentForm({
+      amount: Math.max(0, (inv.total_amount || 0) - (inv.tax_amount || 0)),
+      method: 'cash',
+      date: new Date().toISOString().slice(0, 10),
+      notes: ''
+    })
+    setShowPaymentModal(true)
+  }
+
+  const handlePaymentSubmit = async () => {
+    if (!paymentInvoice || !paymentForm.amount) return
+    await window.api.createPayment({
+      invoice_id: paymentInvoice.id,
+      client_id: paymentInvoice.client_id,
+      type: 'receipt',
+      amount: paymentForm.amount,
+      method: paymentForm.method,
+      date: paymentForm.date,
+      notes: paymentForm.notes
+    })
+    setShowPaymentModal(false)
+    setPaymentInvoice(null)
+    fetchData()
+  }
+
   const copyInvoiceNumber = (invoiceNumber: string) => {
     navigator.clipboard.writeText(invoiceNumber)
   }
 
-  const handlePrint = async (inv: Invoice) => {
-    const items = await window.api.getInvoiceItems(inv.id)
-    const client = clients.find((c) => c.id === inv.client_id)
-    let template: TemplateName = 'modern'
+  const getPrintSettings = (): PrintSettings => {
     try {
-      const ps = settings?.print_settings ? JSON.parse(settings.print_settings) : null
-      if (ps && ps.template) template = ps.template as TemplateName
-    } catch { /* keep default */ }
+      return { template: 'modern', accent_color: '#2563eb', font_size: 12, ...JSON.parse(settings?.print_settings || '{}') }
+    } catch {
+      return { template: 'modern', accent_color: '#2563eb', font_size: 12 }
+    }
+  }
+
+  const handlePrint = async (inv: Invoice) => {
+    const [items, deductions] = await Promise.all([
+      window.api.getInvoiceItems(inv.id),
+      window.api.getInvoiceDeductions?.(inv.id) ?? Promise.resolve([])
+    ])
+    const client = clients.find((c) => c.id === inv.client_id)
+    const ps = getPrintSettings()
+    const template: TemplateName = (ps.template as TemplateName) || 'modern'
     const html = renderInvoiceTemplate(template, {
       invoiceNumber: inv.invoice_number,
       issueDate: inv.created_at ? inv.created_at.split('T')[0].split(' ')[0] : '',
@@ -249,14 +295,14 @@ export default function Invoices() {
         unitPrice: r.unit_price,
         amount: r.amount
       })),
-      deductions: [],
+      deductions: deductions.map((d: any) => ({ type: d.type, description: d.description, amount: d.amount })),
       subtotal: inv.total_before_vat ?? inv.amount,
       vatRate: inv.vat_rate ?? 0,
       vatAmount: inv.tax_amount,
-      deductionsTotal: 0,
+      deductionsTotal: deductions.reduce((s: number, d: any) => s + (Number(d.amount) || 0), 0),
       total: inv.total_amount,
       currency: settings?.currency ?? 'ر.س',
-      notes: inv.notes || ''
+      notes: (ps.footer_text || settings?.footer_text || '') + (inv.notes ? '\n' + inv.notes : '')
     })
     const w = window.open('', '_blank')
     if (w) {
@@ -265,6 +311,34 @@ export default function Invoices() {
       w.focus()
       w.print()
     }
+  }
+
+  const handleExportInvoices = () => {
+    exportToExcelXLSX(
+      invoices.map((inv) => ({
+        invoice_number: inv.invoice_number,
+        client: getClientName(inv.client_id),
+        type: typeLabels[inv.type] || inv.type,
+        before_vat: inv.total_before_vat ?? inv.amount,
+        vat: inv.tax_amount,
+        total: inv.total_amount,
+        status: statusLabels[inv.status] || inv.status,
+        date: inv.created_at,
+        due_date: inv.due_date
+      })),
+      'invoices_' + new Date().toISOString().slice(0, 10),
+      [
+        { key: 'invoice_number', label: 'رقم الفاتورة' },
+        { key: 'client', label: 'العميل' },
+        { key: 'type', label: 'النوع' },
+        { key: 'before_vat', label: 'قبل الضريبة' },
+        { key: 'vat', label: 'الضريبة' },
+        { key: 'total', label: 'الإجمالي' },
+        { key: 'status', label: 'الحالة' },
+        { key: 'date', label: 'التاريخ' },
+        { key: 'due_date', label: 'الاستحقاق' },
+      ]
+    )
   }
 
   return (
@@ -321,8 +395,14 @@ export default function Invoices() {
                       <button onClick={() => openEdit(inv)} title="تعديل" className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20">
                         <Pencil className="w-4 h-4 text-blue-500" />
                       </button>
+                      <button onClick={() => openPayment(inv)} title="تسجيل تحصيل" className="p-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20">
+                        <Banknote className="w-4 h-4 text-amber-500" />
+                      </button>
                       <button onClick={() => handlePrint(inv)} title="طباعة" className="p-1.5 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20">
                         <Printer className="w-4 h-4 text-green-500" />
+                      </button>
+                      <button onClick={handleExportInvoices} title="تصدير Excel" className="p-1.5 rounded-lg hover:bg-sky-50 dark:hover:bg-sky-900/20">
+                        <Download className="w-4 h-4 text-sky-500" />
                       </button>
                       <button onClick={() => handleDelete(inv.id)} title="حذف" className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
                         <Trash2 className="w-4 h-4 text-red-500" />
@@ -468,6 +548,45 @@ export default function Invoices() {
                 <button onClick={handleSubmit} className="btn-primary" disabled={!form.client_id || lineItems.length === 0}>
                   {editingId ? 'حفظ التعديلات' : 'إنشاء الفاتورة'}
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Payment Modal */}
+      <AnimatePresence>
+        {showPaymentModal && paymentInvoice && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="w-full max-w-md mx-4 card p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-bold">تسجيل تحصيل - {paymentInvoice.invoice_number}</h2>
+                <button onClick={() => { setShowPaymentModal(false); setPaymentInvoice(null) }} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">المبلغ ({currency})</label>
+                  <input type="number" min="0" step="any" value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: Number(e.target.value) })} className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">طريقة الدفع</label>
+                  <select value={paymentForm.method} onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value as 'cash' | 'bank' })} className="select-field">
+                    <option value="cash">نقدي</option>
+                    <option value="bank">بنكي</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">التاريخ</label>
+                  <input type="date" value={paymentForm.date} onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })} className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">ملاحظات</label>
+                  <textarea value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} className="input-field" rows={2} placeholder="اختياري" />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button onClick={() => { setShowPaymentModal(false); setPaymentInvoice(null) }} className="btn-secondary">إلغاء</button>
+                <button onClick={handlePaymentSubmit} className="btn-primary" disabled={!paymentForm.amount}>تسجيل الدفعة</button>
               </div>
             </motion.div>
           </motion.div>

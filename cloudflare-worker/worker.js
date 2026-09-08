@@ -1,3 +1,17 @@
+const LICENSE_SECRET_DEFAULT = 'HERP-2025-CHANGE-ME-SECRET';
+
+async function hmac(secret, message) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+  return Array.from(new Uint8Array(signature)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -6,7 +20,7 @@ export default {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
+      'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key'
     };
 
     // Handle CORS preflight
@@ -38,6 +52,13 @@ export default {
 
     // 3. POST /api/set-about - Update about data (admin only)
     if (url.pathname === '/api/set-about' && request.method === 'POST') {
+      const adminKey = request.headers.get('X-Admin-Key') || '';
+      if (env.ADMIN_API_SECRET && adminKey !== env.ADMIN_API_SECRET) {
+        return new Response(JSON.stringify({ success: false, message: 'Unauthorized' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
       const body = await request.json();
       const currentData = await env.APP_KV.get('ABOUT_INFO', { type: 'json' }) || {};
       const updatedData = {
@@ -78,7 +99,7 @@ async function handleTelegramMessage(message, env) {
       `/set_support <link> - Update support link\n` +
       `/set_version <version> - Update version\n` +
       `/set_status <status> - Update status message\n` +
-      `/generate_code <client> <days> - Generate license code\n` +
+      `/generate_code <client> <days> <device_id> - Generate license code\n` +
       `/about - View current about data`
     );
     return;
@@ -157,18 +178,21 @@ async function handleTelegramMessage(message, env) {
     return;
   }
 
-  // /generate_code <client> <days>
+  // /generate_code <client> <days> [device_id]
   if (text.startsWith('/generate_code')) {
     const parts = text.split(' ');
     const clientName = parts[1] || 'Client';
     const days = parseInt(parts[2] || '30', 10);
+    const deviceId = (parts[3] || '').trim();
 
     const payload = {
       client: clientName,
       days: days,
       created_at: Date.now(),
-      nonce: Math.random().toString(36).substring(7)
+      nonce: Math.random().toString(36).substring(7),
+      device_id: deviceId
     };
+    payload.sig = await hmac(env.LICENSE_SECRET || LICENSE_SECRET_DEFAULT, `${payload.client}|${payload.days}|${payload.created_at}|${deviceId}`);
 
     const jsonStr = JSON.stringify(payload);
     const encodedCode = btoa(jsonStr);

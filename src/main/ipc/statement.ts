@@ -8,17 +8,35 @@ export function registerStatementHandlers(): void {
     const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId) as Record<string, unknown> | undefined
     if (!client) throw new Error('العميل غير موجود')
 
-    const openingBalance = client.opening_balance as number || 0
+    const baseOpeningBalance = client.opening_balance as number || 0
+
+    // Correct opening balance includes all movement before the selected period
+    const priorInvoices = db.prepare(`
+      SELECT COALESCE(SUM(total_amount), 0) as total
+      FROM invoices WHERE client_id = ? AND status != 'cancelled' AND date(created_at) < date(?)
+    `).get(clientId, dateFrom) as { total: number }
+
+    const priorReceipts = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM payments WHERE client_id = ? AND type = 'receipt' AND date(date) < date(?)
+    `).get(clientId, dateFrom) as { total: number }
+
+    const priorPayments = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total
+      FROM payments WHERE client_id = ? AND type = 'payment' AND date(date) < date(?)
+    `).get(clientId, dateFrom) as { total: number }
+
+    const openingBalance = baseOpeningBalance + priorInvoices.total - priorReceipts.total + priorPayments.total
 
     const invoices = db.prepare(`
-      SELECT id, invoice_number as ref, created_at as date, total_amount as amount, notes as description, 'invoice' as type
+      SELECT id, invoice_number as doc_number, created_at as date, total_amount as amount, notes as description, 'invoice' as type
       FROM invoices WHERE client_id = ? AND status != 'cancelled' AND date(created_at) BETWEEN date(?) AND date(?)
-    `).all(clientId, dateFrom, dateTo) as Array<{ ref: string; date: string; amount: number; description: string; type: string }>
+    `).all(clientId, dateFrom, dateTo) as Array<{ doc_number: string; date: string; amount: number; description: string; type: string }>
 
     const payments = db.prepare(`
-      SELECT id, payment_number as ref, date, amount, notes as description, 'payment' as type
+      SELECT id, payment_number as doc_number, date, amount, notes as description, type, 'payment' as payment_kind
       FROM payments WHERE client_id = ? AND date(date) BETWEEN date(?) AND date(?)
-    `).all(clientId, dateFrom, dateTo) as Array<{ ref: string; date: string; amount: number; description: string; type: string }>
+    `).all(clientId, dateFrom, dateTo) as Array<{ doc_number: string; date: string; amount: number; description: string; type: string; payment_kind: string }>
 
     const allTransactions = [...invoices, ...payments].sort((a, b) => a.date.localeCompare(b.date))
 
@@ -27,14 +45,18 @@ export function registerStatementHandlers(): void {
       if (tx.type === 'invoice') {
         runningBalance += tx.amount
         return { ...tx, debit: tx.amount, credit: 0, balance: runningBalance }
-      } else {
-        runningBalance -= tx.amount
-        return { ...tx, debit: 0, credit: tx.amount, balance: runningBalance }
       }
+      if (tx.type === 'payment') {
+        // مرتجع/دفعة عكسية تزيد رصيد العميل
+        runningBalance += tx.amount
+        return { ...tx, debit: tx.amount, credit: 0, balance: runningBalance }
+      }
+      runningBalance -= tx.amount
+      return { ...tx, debit: 0, credit: tx.amount, balance: runningBalance }
     })
 
     const totalInvoiced = invoices.reduce((sum, inv) => sum + inv.amount, 0)
-    const totalPaid = payments.reduce((sum, pay) => sum + pay.amount, 0)
+    const totalPaid = payments.filter((pay) => pay.type === 'receipt').reduce((sum, pay) => sum + pay.amount, 0)
 
     return {
       client: { id: client.id, name: client.name, phone: client.phone, address: client.address },

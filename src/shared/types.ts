@@ -1,4 +1,4 @@
-﻿export interface Client {
+export interface Client {
   id: number
   name: string
   phone: string
@@ -266,6 +266,7 @@ export interface PayrollItem {
   id: number
   payroll_run_id: number
   employee_id: number
+  employee_name?: string
   base_salary: number
   overtime_hours: number
   overtime_amount: number
@@ -296,6 +297,8 @@ export interface AppSettings {
   vat_note: string
   print_settings: string
   logo_path: string
+  footer_text: string
+  font_size: number
   created_at: string
   updated_at: string
 }
@@ -323,18 +326,37 @@ export interface InvoiceDeduction {
   created_at: string
 }
 
+export interface Voucher {
+  id: number
+  voucher_number: string
+  voucher_type: 'pay' | 'receive'
+  client_id: number | null
+  equipment_id: number | null
+  invoice_id: number | null
+  payment_id: number | null
+  bank_id: number | null
+  amount: number
+  method: 'cash' | 'bank'
+  date: string
+  beneficiary: string
+  description: string
+  status: 'confirmed' | 'cancelled'
+  created_at: string
+  updated_at: string
+}
+
 export interface PrintSettings {
-  template: 'modern' | 'classic' | 'compact' | 'elegant' | 'thermal'
-  paper: 'A4' | 'A5' | 'Letter'
-  orientation: 'portrait' | 'landscape'
-  accent_color: string
-  show_logo: boolean
-  show_company_name: boolean
-  show_tax_number: boolean
-  show_commercial_reg: boolean
-  show_address: boolean
-  show_phone: boolean
-  show_footer: boolean
-  footer_text: string
-  font_size: number
+  template?: 'modern' | 'classic' | 'compact' | 'elegant' | 'thermal'
+  paper?: 'A4' | 'A5' | 'Letter'
+  orientation?: 'portrait' | 'landscape'
+  accent_color?: string
+  show_logo?: boolean
+  show_company_name?: boolean
+  show_tax_number?: boolean
+  show_commercial_reg?: boolean
+  show_address?: boolean
+  show_phone?: boolean
+  show_footer?: boolean
+  footer_text?: string
+  font_size?: number
 }

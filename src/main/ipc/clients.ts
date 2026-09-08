@@ -21,17 +21,20 @@ export function registerClientHandlers(): void {
     return Number(result.lastInsertRowid)
   })
 
+  const allowedColumns = new Set(['name', 'phone', 'company', 'address', 'credit_limit', 'opening_balance', 'current_balance', 'notes'])
+
   ipcMain.handle('clients:update', (_, id: number, client: Partial<Client>): boolean => {
     const fields: string[] = []
     const values: unknown[] = []
 
     Object.entries(client).forEach(([key, value]) => {
-      if (key !== 'id' && key !== 'created_at') {
+      if (allowedColumns.has(key)) {
         fields.push(`${key} = ?`)
         values.push(value)
       }
     })
 
+    if (fields.length === 0) return true
     fields.push("updated_at = datetime('now')")
     values.push(id)
 
@@ -40,6 +43,12 @@ export function registerClientHandlers(): void {
   })
 
   ipcMain.handle('clients:delete', (_, id: number): boolean => {
+    const refs = db.prepare(
+      `SELECT (SELECT COUNT(*) FROM rental_contracts WHERE client_id = ?) +
+              (SELECT COUNT(*) FROM invoices WHERE client_id = ?) +
+              (SELECT COUNT(*) FROM payments WHERE client_id = ?) as c`
+    ).get(id, id, id) as { c: number }
+    if (refs.c > 0) throw new Error('لا يمكن حذف العميل لوجود عقود أو فواتير أو مدفوعات مرتبطة به')
     db.prepare('DELETE FROM clients WHERE id = ?').run(id)
     return true
   })

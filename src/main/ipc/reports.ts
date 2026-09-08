@@ -6,7 +6,7 @@ export function registerReportHandlers(): void {
 
   ipcMain.handle('reports:pnl', (_, dateFrom: string, dateTo: string) => {
     const invoices = db.prepare(`
-      SELECT COALESCE(SUM(total_amount), 0) as revenue
+      SELECT COALESCE(SUM(total_before_vat), 0) as revenue
       FROM invoices WHERE status IN ('paid','partial') AND date(created_at) BETWEEN date(?) AND date(?)
     `).get(dateFrom, dateTo) as { revenue: number }
 
@@ -56,7 +56,7 @@ export function registerReportHandlers(): void {
       `).get(eq.id, dateFrom, dateTo) as { count: number; total: number }
 
       const invoices = db.prepare(`
-        SELECT COALESCE(SUM(total_amount), 0) as total
+        SELECT COALESCE(SUM(total_before_vat), 0) as total
         FROM invoices WHERE equipment_id = ? AND status IN ('paid','partial') AND date(created_at) BETWEEN date(?) AND date(?)
       `).get(eq.id, dateFrom, dateTo) as { total: number }
 
@@ -65,6 +65,21 @@ export function registerReportHandlers(): void {
         FROM expenses WHERE equipment_id = ? AND date(date) BETWEEN date(?) AND date(?)
       `).get(eq.id, dateFrom, dateTo) as { total: number }
 
+      const voucherPay = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM vouchers WHERE equipment_id = ? AND voucher_type = 'pay' AND status != 'cancelled'
+          AND date(date) BETWEEN date(?) AND date(?)
+      `).get(eq.id, dateFrom, dateTo) as { total: number }
+
+      const voucherReceive = db.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM vouchers WHERE equipment_id = ? AND voucher_type = 'receive' AND status != 'cancelled'
+          AND date(date) BETWEEN date(?) AND date(?)
+      `).get(eq.id, dateFrom, dateTo) as { total: number }
+
+      const totalExpenses = expenses.total + voucherPay.total
+      const totalRevenue = invoices.total + voucherReceive.total
+
       return {
         equipment_id: eq.id,
         equipment_name: eq.name,
@@ -72,8 +87,10 @@ export function registerReportHandlers(): void {
         contracts_count: contracts.count,
         total_contracts: contracts.total,
         total_invoices: invoices.total,
-        total_expenses: expenses.total,
-        net_profit: invoices.total - expenses.total
+        voucher_expenses: voucherPay.total,
+        voucher_revenue: voucherReceive.total,
+        total_expenses: totalExpenses,
+        net_profit: totalRevenue - totalExpenses
       }
     })
   })

@@ -1,16 +1,34 @@
-﻿import { ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { getDatabase } from '../db/schema'
 import { getHardwareFingerprint } from '../utils/hwid'
+import crypto from 'crypto'
 import type { LicenseInfo } from '@shared/types'
 
-function decryptCode(code: string): { client: string; days: number; created_at: number; nonce: string } | null {
+const LICENSE_SECRET = process.env.LICENSE_SECRET || 'HERP-2025-CHANGE-ME-SECRET'
+
+interface ActivationPayload {
+  client: string
+  days: number
+  created_at: number
+  nonce: string
+  device_id?: string
+  sig?: string
+}
+
+function decryptCode(code: string, deviceId: string): ActivationPayload | null {
   try {
     const jsonStr = Buffer.from(code, 'base64').toString('utf-8')
-    const payload = JSON.parse(jsonStr)
-    if (payload.client && payload.days && payload.created_at) {
-      return payload
-    }
-    return null
+    const payload = JSON.parse(jsonStr) as ActivationPayload
+    if (!payload.client || !payload.days || !payload.created_at) return null
+
+    const expectedSig = crypto
+      .createHmac('sha256', LICENSE_SECRET)
+      .update(`${payload.client}|${payload.days}|${payload.created_at}|${payload.device_id || ''}`)
+      .digest('hex')
+
+    if (payload.sig !== expectedSig) return null
+    if (payload.device_id && payload.device_id !== deviceId) return null
+    return payload
   } catch {
     return null
   }
@@ -58,9 +76,10 @@ export function registerLicenseHandlers(): void {
   })
 
   ipcMain.handle('license:activate', (_, code: string): { success: boolean; message: string } => {
-    const payload = decryptCode(code)
+    const deviceId = generateHardwareFingerprint()
+    const payload = decryptCode(code, deviceId)
     if (!payload) {
-      return { success: false, message: 'تنسيق كود التفعيل غير صالح' }
+      return { success: false, message: 'كود التفعيل غير صالح أو غير موجه لهذا الجهاز' }
     }
 
     const expiryDate = new Date()

@@ -25,6 +25,7 @@ const sections = [
       { to: '/invoices', label: 'الفواتير', icon: Receipt },
       { to: '/purchases', label: 'المشتريات', icon: ShoppingCart },
       { to: '/expenses', label: 'المصروفات', icon: Wallet },
+      { to: '/vouchers', label: 'السندات', icon: Banknote },
     ]
   },
   {

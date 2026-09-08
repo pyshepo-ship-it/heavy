@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { getDatabase, closeDatabase } from './db/schema'
@@ -20,6 +20,7 @@ import { registerStatementHandlers } from './ipc/statement'
 import { registerInvoiceItemHandlers } from './ipc/invoiceItems'
 import { registerInvoiceDeductionHandlers } from './ipc/invoiceDeductions'
 import { registerBackupHandlers } from './ipc/backup'
+import { registerVoucherHandlers } from './ipc/vouchers'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -30,7 +31,6 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: 'Heavy Equipment ERP',
-    icon: join(__dirname, '../../build/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -44,7 +44,21 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    const url = (details.url || '').trim()
+    // Allow print popups (about:blank) without exposing Node APIs.
+    if (url === '' || url === 'about:blank') {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: true
+          }
+        }
+      }
+    }
+    if (/^https?:/i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
 
@@ -87,6 +101,7 @@ app.whenReady().then(() => {
   registerInvoiceItemHandlers()
   registerInvoiceDeductionHandlers()
   registerBackupHandlers()
+  registerVoucherHandlers()
 
   createWindow()
 

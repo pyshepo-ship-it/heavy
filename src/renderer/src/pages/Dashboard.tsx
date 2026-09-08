@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -106,6 +106,7 @@ export default function Dashboard() {
         total_equipment: stats?.total_equipment || 0,
         available_equipment: stats?.available_equipment || 0,
         rented_equipment: stats?.rented_equipment || 0,
+        maintenance_equipment: stats?.maintenance_equipment || 0,
         active_contracts: stats?.active_contracts || 0,
         pending_invoices: stats?.pending_invoices || 0
       } : null)

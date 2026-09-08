@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEquipmentStore } from '../store/useEquipmentStore'
 import { Plus, Edit, Trash2, Search, X, AlertTriangle, PackageOpen } from 'lucide-react'
@@ -23,7 +23,7 @@ export default function Equipment() {
   const [editing, setEditing] = useState<Equipment | null>(null)
   const [form, setForm] = useState({
     name: '', type: 'حفار', current_meter: 0,
-    hourly_rate: 0, daily_rate: 0, monthly_rate: 0, status: 'available' as const, notes: ''
+    hourly_rate: 0, daily_rate: 0, monthly_rate: 0, status: 'available' as 'available' | 'rented' | 'maintenance', notes: ''
   })
   const [currency, setCurrency] = useState('ر.س')
   const [contracts, setContracts] = useState<any[]>([])
